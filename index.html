@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Philippines Missile Range Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        /* Custom font */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Leaflet map height */
+        #map { 
+            height: 100%; 
+            width: 100%;
+            border-radius: 0.5rem;
+            z-index: 10;
+        }
+        /* Custom scrollbar for aesthetics */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 10px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        /* Legend styling */
+        .legend {
+            padding: 6px 8px;
+            font: 14px/16px Arial, Helvetica, sans-serif;
+            background: white;
+            background: rgba(255,255,255,0.8);
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+        }
+        .legend i {
+            width: 12px;
+            height: 12px;
+            float: left;
+            margin-right: 8px;
+            opacity: 0.9;
+            border-radius: 50%;
+        }
+        .leaflet-tooltip.custom-tooltip {
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: 1px solid #777;
+            border-radius: 4px;
+            padding: 5px;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 max-w-7xl">
+        <header class="text-center mb-6">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-900">Philippines Missile Range Simulator</h1>
+            <p class="text-md text-gray-600 mt-1">Visualizing missile ranges and potential impact on Philippine provinces.</p>
+        </header>
+
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Control Panel -->
+            <div class="lg:w-1/3 bg-white p-6 rounded-xl shadow-lg flex flex-col">
+                <h2 class="text-xl font-semibold mb-4 border-b pb-2">Controls</h2>
+                
+                <div class="mb-4">
+                    <label for="country-select" class="block text-sm font-medium text-gray-700 mb-2">1. Select a Country/Deployment:</label>
+                    <select id="country-select" class="w-full bg-gray-50 border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2.5">
+                        <option selected value="">Choose an option</option>
+                        <option value="China">China</option>
+                        <option value="North Korea">North Korea</option>
+                        <option value="USA">United States (Regional)</option>
+                        <option value="USA (in PH)">USA (in PH)</option>
+                        <option value="USA (CSG)">USA (Carrier Strike Group)</option>
+                        <option value="Russia">Russia</option>
+                    </select>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">2. Toggle Offensive Missiles:</label>
+                    <div id="missile-list" class="h-40 overflow-y-auto custom-scrollbar pr-2 border rounded-lg p-2 bg-gray-50">
+                        <p class="text-gray-500 text-sm">Please select an option to see available missiles.</p>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">3. Toggle Defensive Systems:</label>
+                    <div id="defense-list" class="h-28 overflow-y-auto custom-scrollbar pr-2 border rounded-lg p-2 bg-gray-50">
+                        <!-- Defensive systems populated by JS -->
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4 mb-4">
+                    <div id="at-risk-panel" class="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                        <h3 class="font-semibold text-yellow-800 mb-2">Population at Risk</h3>
+                        <div id="at-risk-content" class="text-lg font-bold text-yellow-900">
+                            0
+                        </div>
+                         <p class="text-xs text-yellow-700">Provinces in range.</p>
+                    </div>
+                    <div id="time-to-ncr-panel" class="bg-red-50 border border-red-200 p-4 rounded-lg">
+                        <h3 class="font-semibold text-red-800 mb-2">Est. Time to Manila</h3>
+                        <div id="time-to-ncr-content" class="text-lg font-bold text-red-900">
+                            N/A
+                        </div>
+                         <p class="text-xs text-red-700">Shortest flight time.</p>
+                    </div>
+                </div>
+
+
+                <div id="info-panel" class="bg-blue-50 border border-blue-200 p-4 rounded-lg flex-grow">
+                    <h3 class="font-semibold text-blue-800 mb-2">Information</h3>
+                    <div id="info-content" class="text-sm text-blue-700">
+                        <p>Hover over a missile or map marker for details.</p>
+                    </div>
+                </div>
+                
+                <div class="mt-4">
+                    <button id="clear-map-btn" class="w-full bg-red-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-red-700 transition duration-300">
+                        Clear Ranges
+                    </button>
+                </div>
+            </div>
+
+            <!-- Map Container -->
+            <div class="lg:w-2/3 h-96 lg:h-[850px] bg-white rounded-xl shadow-lg p-2">
+                <div id="map"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA ---
+        const missileData = {
+            "China": {
+                color: 'red',
+                launchSites: [
+                    { name: 'Yulin Naval Base, Hainan', coords: [18.22, 109.68] },
+                    { name: 'Ganzhou Missile Base', coords: [25.86, 114.93] }
+                ],
+                missiles: [
+                    { id: 'df17', name: 'DF-17', range: 2500, type: 'Hypersonic', speed: 12350, trajectory: 'hypersonic', info: 'Hypersonic weapon designed to bypass missile defenses.' },
+                    { id: 'df21', name: 'DF-21D', range: 1500, type: 'ASBM', speed: 12300, trajectory: 'ballistic', info: 'Anti-ship ballistic missile often called a "carrier-killer".' },
+                    { id: 'df26', name: 'DF-26', range: 4000, type: 'IRBM', speed: 22000, trajectory: 'ballistic', info: 'Intermediate-range ballistic missile capable of hitting Guam.' },
+                    { id: 'cj10', name: 'CJ-10', range: 1500, type: 'Cruise', speed: 1000, trajectory: 'cruise', info: 'Long-range conventional cruise missile.' },
+                    { id: 'jl2', name: 'JL-2', range: 7400, type: 'SLBM', speed: 28000, trajectory: 'ballistic', info: 'Submarine-launched ballistic missile, provides second-strike capability.' },
+                    { id: 'df41', name: 'DF-41', range: 15000, type: 'ICBM', speed: 30000, trajectory: 'ballistic', info: 'China\'s newest and most powerful road-mobile ICBM.' }
+                ]
+            },
+            "North Korea": {
+                color: 'purple',
+                launchSites: [ { name: 'Pyongyang Area', coords: [39.0392, 125.7625] } ],
+                missiles: [
+                    { id: 'pukguksong3', name: 'Pukguksong-3', range: 1900, type: 'SLBM', speed: 11000, trajectory: 'ballistic', info: 'Submarine-launched ballistic missile, enhancing survivability.' },
+                    { id: 'hwasong12', name: 'Hwasong-12', range: 4500, type: 'IRBM', speed: 21000, trajectory: 'ballistic', info: 'Intermediate-range missile that can reach Guam.' },
+                    { id: 'hwasong15', name: 'Hwasong-15', range: 13000, type: 'ICBM', speed: 28000, trajectory: 'ballistic', info: 'Larger ICBM capable of reaching all of the US mainland.' },
+                    { id: 'hwasong18', name: 'Hwasong-18', range: 15000, type: 'ICBM', speed: 29000, trajectory: 'ballistic', info: 'Solid-fuel makes it harder to detect pre-launch.' }
+                ]
+            },
+            "USA": {
+                color: 'blue',
+                launchSites: [
+                    { name: 'Guam (Andersen AFB)', coords: [13.58, 144.93] },
+                    { name: 'Okinawa (Kadena AB)', coords: [26.36, 127.77] }
+                ],
+                missiles: [
+                    { id: 'lrasm', name: 'LRASM', range: 930, type: 'Anti-Ship', speed: 1100, trajectory: 'cruise', info: 'Stealthy, long-range anti-ship missile launched from aircraft.' },
+                    { id: 'tomahawk_reg', name: 'Tomahawk', range: 2500, type: 'Cruise', speed: 880, trajectory: 'cruise', info: 'Long-range subsonic cruise missile.' },
+                    { id: 'darkeagle', name: 'Dark Eagle (LRHW)', range: 2775, type: 'Hypersonic', speed: 6174, trajectory: 'hypersonic', info: 'Land-based hypersonic weapon system.' },
+                    { id: 'minuteman3', name: 'Minuteman III', range: 13000, type: 'ICBM', speed: 28200, trajectory: 'ballistic', info: 'Silo-based ICBM forming the backbone of US land-based nuclear deterrence.' }
+                ]
+            },
+            "USA (in PH)": {
+                color: '#16a34a',
+                launchSites: [
+                    { name: 'Laoag, Ilocos Norte', coords: [18.178, 120.53] },
+                    { name: 'Batanes Islands', coords: [20.78, 121.86] }
+                ],
+                missiles: [
+                    { id: 'himars', name: 'HIMARS (ATACMS)', range: 300, type: 'Artillery', speed: 3600, trajectory: 'ballistic', info: 'Highly mobile rocket system firing tactical ballistic missiles.' },
+                    { id: 'nmesis', name: 'NMESIS (NSM)', range: 185, type: 'Anti-Ship', speed: 980, trajectory: 'cruise', info: 'Unmanned, land-based system firing the Naval Strike Missile.' },
+                    { id: 'typhon_sm6', name: 'Typhon (SM-6)', range: 460, type: 'Multi-purpose', speed: 4300, trajectory: 'ballistic', info: 'Fired from Typhon launcher for air/surface targets.' },
+                    { id: 'typhon_tomahawk', name: 'Typhon (Tomahawk)', range: 2500, type: 'Cruise', speed: 880, trajectory: 'cruise', info: 'Long-range land attack missile fired from Typhon launcher.' }
+                ]
+            },
+            "USA (CSG)": {
+                color: '#3b82f6',
+                launchSites: [
+                    { name: 'USS G. Washington CSG', coords: [15.0, 125.0], draggable: true }
+                ],
+                missiles: [
+                    { id: 'lrasm_csg', name: 'LRASM (Air-Launched)', range: 930, type: 'Anti-Ship', speed: 1100, trajectory: 'cruise', info: 'Stealthy, long-range anti-ship missile launched from F/A-18s.' },
+                    { id: 'sm6_csg', name: 'SM-6 (VLS)', range: 460, type: 'Multi-purpose', speed: 4300, trajectory: 'ballistic', info: 'Launched from cruisers/destroyers for air/surface targets.' },
+                    { id: 'tomahawk_csg', name: 'Tomahawk (VLS)', range: 2500, type: 'Cruise', speed: 880, trajectory: 'cruise', info: 'Launched from cruisers/destroyers for land attack.' }
+                ]
+            },
+            "Russia": {
+                color: 'orange',
+                launchSites: [ { name: 'Vladivostok Area', coords: [43.1198, 131.888] } ],
+                missiles: [
+                    { id: 'kalibr', name: 'Kalibr', range: 2500, type: 'Cruise', speed: 3500, trajectory: 'cruise', info: 'Sea-launched cruise missile, comparable to the Tomahawk.' },
+                    { id: 'bulava', name: 'Bulava', range: 9300, type: 'SLBM', speed: 29000, trajectory: 'ballistic', info: 'Russia\'s primary submarine-launched ballistic missile.' },
+                    { id: 'r36', name: 'R-36M (SS-18 Satan)', range: 16000, type: 'ICBM', speed: 28000, trajectory: 'ballistic', info: 'Heavy ICBM, one of the most powerful in the world.' },
+                    { id: 'sarmat', name: 'RS-28 Sarmat', range: 18000, type: 'ICBM', speed: 25000, trajectory: 'ballistic', info: 'Successor to the R-36M, capable of carrying hypersonic glide vehicles.' }
+                ]
+            }
+        };
+
+        const defensiveSystems = [
+            { id: 'thaad_guam', name: 'THAAD (Guam)', coords: [13.47, 144.75], range: 200, info: 'Terminal High Altitude Area Defense, designed to intercept ballistic missiles.' },
+            { id: 'aegis_japan', name: 'Aegis Ashore (Japan)', coords: [35.45, 139.63], range: 500, info: 'Land-based component of the Aegis BMD system.' },
+            { id: 'spyder_ph', name: 'SPYDER-MR (Philippines)', coords: [15.17, 120.55], range: 50, info: 'Medium-range air defense system acquired by the Philippine Air Force.' }
+        ];
+
+        const philippineProvinces = [
+            { name: 'Abra', coords: [17.60, 120.62], population: 250985 }, { name: 'Agusan del Norte', coords: [9.15, 125.48], population: 387503 }, { name: 'Agusan del Sur', coords: [8.48, 125.82], population: 739367 }, { name: 'Aklan', coords: [11.69, 122.31], population: 615475 }, { name: 'Albay', coords: [13.22, 123.65], population: 1374768 }, { name: 'Antique', coords: [11.23, 122.09], population: 612974 }, { name: 'Apayao', coords: [17.99, 121.37], population: 124366 }, { name: 'Aurora', coords: [15.82, 121.55], population: 235750 }, { name: 'Basilan', coords: [6.56, 122.06], population: 426207 }, { name: 'Bataan', coords: [14.65, 120.45], population: 853373 }, { name: 'Batanes', coords: [20.78, 121.86], population: 18831 }, { name: 'Batangas', coords: [13.84, 121.05], population: 2908494 }, { name: 'Benguet', coords: [16.59, 120.73], population: 460683 }, { name: 'Biliran', coords: [11.56, 124.52], population: 179312 }, { name: 'Bohol', coords: [9.83, 124.22], population: 1394329 }, { name: 'Bukidnon', coords: [7.91, 124.95], population: 1541308 }, { name: 'Bulacan', coords: [14.95, 120.95], population: 3708890 }, { name: 'Cagayan', coords: [17.95, 121.69], population: 1268603 }, { name: 'Camarines Norte', coords: [14.18, 122.78], population: 629699 }, { name: 'Camarines Sur', coords: [13.68, 123.32], population: 2068244 }, { name: 'Camiguin', coords: [9.16, 124.71], population: 92808 }, { name: 'Capiz', coords: [11.39, 122.65], population: 804952 }, { name: 'Catanduanes', coords: [13.82, 124.25], population: 271879 }, { name: 'Cavite', coords: [14.24, 120.89], population: 4344829 }, { name: 'Cebu', coords: [10.32, 123.75], population: 3325385 }, { name: 'Cotabato', coords: [7.15, 124.83], population: 1493796 }, { name: 'Davao de Oro', coords: [7.55, 126.15], population: 767547 }, { name: 'Davao del Norte', coords: [7.57, 125.73], population: 1125051 }, { name: 'Davao del Sur', coords: [6.68, 125.39], population: 680481 }, { name: 'Davao Occidental', coords: [6.39, 125.59], population: 317159 }, { name: 'Davao Oriental', coords: [7.13, 126.37], population: 576343 }, { name: 'Dinagat Islands', coords: [10.27, 125.60], population: 128117 }, { name: 'Eastern Samar', coords: [11.70, 125.43], population: 477168 }, { name: 'Guimaras', coords: [10.57, 122.60], population: 187842 }, { name: 'Ifugao', coords: [16.83, 121.08], population: 207498 }, { name: 'Ilocos Norte', coords: [18.17, 120.75], population: 609588 }, { name: 'Ilocos Sur', coords: [17.38, 120.59], population: 706009 }, { name: 'Iloilo', coords: [11.00, 122.64], population: 2051899 }, { name: 'Isabela', coords: [17.03, 121.85], population: 1697050 }, { name: 'Kalinga', coords: [17.51, 121.28], population: 229570 }, { name: 'La Union', coords: [16.53, 120.40], population: 822352 }, { name: 'Laguna', coords: [14.15, 121.32], population: 3382193 }, { name: 'Lanao del Norte', coords: [7.93, 123.83], population: 722914 }, { name: 'Lanao del Sur', coords: [7.82, 124.28], population: 1195518 }, { name: 'Leyte', coords: [11.00, 124.84], population: 1776847 }, { name: 'Maguindanao', coords: [7.03, 124.41], population: 1667258 }, { name: 'Marinduque', coords: [13.38, 121.98], population: 239207 }, { name: 'Masbate', coords: [12.27, 123.61], population: 908920 }, { name: 'Misamis Occidental', coords: [8.33, 123.73], population: 613811 }, { name: 'Misamis Oriental', coords: [8.65, 124.78], population: 956900 }, { name: 'Mountain Province', coords: [17.08, 121.17], population: 158200 }, { name: 'Negros Occidental', coords: [10.22, 122.89], population: 2623172 }, { name: 'Negros Oriental', coords: [9.67, 123.12], population: 1432990 }, { name: 'Northern Samar', coords: [12.33, 124.69], population: 639186 }, { name: 'Nueva Ecija', coords: [15.58, 120.95], population: 2310134 }, { name: 'Nueva Vizcaya', coords: [16.32, 121.13], population: 497432 }, { name: 'Occidental Mindoro', coords: [13.05, 120.89], population: 525354 }, { name: 'Oriental Mindoro', coords: [12.87, 121.41], population: 908339 }, { name: 'Palawan', coords: [9.74, 118.73], population: 939594 }, { name: 'Pampanga', coords: [15.08, 120.67], population: 2437709 }, { name: 'Pangasinan', coords: [15.93, 120.33], population: 3163190 }, { name: 'Quezon', coords: [14.07, 121.87], population: 1950459 }, { name: 'Quirino', coords: [16.32, 121.60], population: 203828 }, { name: 'Rizal', coords: [14.60, 121.25], population: 3330143 }, { name: 'Romblon', coords: [12.46, 122.46], population: 308985 }, { name: 'Samar', coords: [11.90, 125.04], population: 793183 }, { name: 'Sarangani', coords: [5.93, 125.28], population: 558946 }, { name: 'Siquijor', coords: [9.18, 123.60], population: 103395 }, { name: 'Sorsogon', coords: [12.85, 123.90], population: 828655 }, { name: 'South Cotabato', coords: [6.33, 124.90], population: 975476 }, { name: 'Southern Leyte', coords: [10.38, 125.10], population: 429573 }, { name: 'Sultan Kudarat', coords: [6.63, 124.47], population: 854052 }, { name: 'Sulu', coords: [5.97, 121.14], population: 1000108 }, { name: 'Surigao del Norte', coords: [9.72, 125.68], population: 534636 }, { name: 'Surigao del Sur', coords: [8.65, 126.20], population: 642255 }, { name: 'Tarlac', coords: [15.48, 120.50], population: 1503456 }, { name: 'Tawi-Tawi', coords: [5.19, 120.10], population: 440276 }, { name: 'Zambales', coords: [15.33, 120.17], population: 649615 }, { name: 'Zamboanga del Norte', coords: [8.33, 123.00], population: 1047455 }, { name: 'Zamboanga del Sur', coords: [7.83, 123.25], population: 1056002 }, { name: 'Zamboanga Sibugay', coords: [7.78, 122.67], population: 669840 }, { name: 'Metro Manila (NCR)', coords: [14.60, 121.00], population: 13484462 }
+        ];
+        const ncrCoords = [14.60, 121.00];
+
+        // --- MAP INITIALIZATION ---
+        const map = L.map('map').setView([12.8797, 121.7740], 6);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
+
+        // --- DOM ELEMENTS & STATE ---
+        const countrySelect = document.getElementById('country-select');
+        const missileListDiv = document.getElementById('missile-list');
+        const defenseListDiv = document.getElementById('defense-list');
+        const infoContent = document.getElementById('info-content');
+        const atRiskContent = document.getElementById('at-risk-content');
+        const timeToNcrContent = document.getElementById('time-to-ncr-content');
+        const clearMapBtn = document.getElementById('clear-map-btn');
+        let activeLayers = {};
+        let provinceMarkers = [];
+        let launchSiteMarkers = {};
+
+        // --- INITIALIZATION FUNCTIONS ---
+        
+        function populateProvinceMarkers() {
+            philippineProvinces.forEach(province => {
+                const marker = L.circleMarker(province.coords, {
+                    radius: 4,
+                    fillColor: "#1e40af",
+                    color: "#ffffff",
+                    weight: 1,
+                    opacity: 1,
+                    fillOpacity: 0.8
+                }).addTo(map);
+                marker.bindPopup(`<b>${province.name}</b><br>Population: ${province.population.toLocaleString()}`);
+                marker.bindTooltip(`<b>${province.name}</b><br>${province.population.toLocaleString()}`);
+                marker.on('mouseover', () => showLocationInfo(province));
+                provinceMarkers.push({ ...province, marker: marker });
+            });
+        }
+
+        function populateDefenseList() {
+            defensiveSystems.forEach(system => {
+                const div = document.createElement('div');
+                div.className = 'flex items-center mb-2';
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.id = system.id;
+                checkbox.className = 'w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500';
+                checkbox.addEventListener('change', () => toggleDefensiveSystem(system));
+                const label = document.createElement('label');
+                label.htmlFor = system.id;
+                label.className = 'ml-2 text-sm font-medium text-gray-900 cursor-pointer';
+                label.textContent = system.name;
+                div.addEventListener('mouseenter', () => showSystemInfo(system));
+                div.appendChild(checkbox);
+                div.appendChild(label);
+                defenseListDiv.appendChild(div);
+            });
+        }
+
+        function addLegend() {
+            const legend = L.control({position: 'bottomright'});
+            legend.onAdd = function (map) {
+                const div = L.DomUtil.create('div', 'info legend');
+                div.innerHTML += '<h4>Legend</h4>';
+                div.innerHTML += `<i style="background: #1e40af;"></i> Provincial Center`;
+                return div;
+            };
+            legend.addTo(map);
+        }
+
+        // --- EVENT HANDLERS ---
+        countrySelect.addEventListener('change', handleCountryChange);
+        clearMapBtn.addEventListener('click', clearAllLayers);
+
+        function handleCountryChange() {
+            const selectedCountry = countrySelect.value;
+            missileListDiv.innerHTML = ''; 
+
+            if (selectedCountry && missileData[selectedCountry]) {
+                const countryData = missileData[selectedCountry];
+                countryData.missiles.forEach(missile => {
+                    const div = document.createElement('div');
+                    div.className = 'flex items-center mb-2';
+                    const checkbox = document.createElement('input');
+                    checkbox.type = 'checkbox';
+                    checkbox.id = missile.id;
+                    checkbox.value = missile.id;
+                    checkbox.className = 'w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500';
+                    checkbox.addEventListener('change', (e) => toggleMissileRange(e, selectedCountry));
+                    const label = document.createElement('label');
+                    label.htmlFor = missile.id;
+                    label.className = 'ml-2 text-sm font-medium text-gray-900 cursor-pointer';
+                    label.textContent = `${missile.name} (${missile.range} km)`;
+                    div.addEventListener('mouseenter', () => showMissileInfo(missile));
+                    div.appendChild(checkbox);
+                    div.appendChild(label);
+                    missileListDiv.appendChild(div);
+                });
+            } else {
+                missileListDiv.innerHTML = '<p class="text-gray-500 text-sm">Please select an option.</p>';
+            }
+        }
+
+        function toggleMissileRange(event, countryName) {
+            const missileId = event.target.value;
+            const countryData = missileData[countryName];
+            const missile = countryData.missiles.find(m => m.id === missileId);
+
+            if (event.target.checked) {
+                activeLayers[missileId] = [];
+                countryData.launchSites.forEach(site => {
+                    const circle = L.circle(site.coords, {
+                        color: countryData.color,
+                        fillColor: countryData.color,
+                        fillOpacity: 0.15,
+                        weight: 2,
+                        radius: missile.range * 1000
+                    }).addTo(map);
+                    circle.bindPopup(`<b>${missile.name}</b><br>Range: ${missile.range} km<br>From: ${site.name}`);
+                    activeLayers[missileId].push(circle);
+
+                    // Add draggable marker for CSG
+                    if (site.draggable) {
+                        const marker = L.marker(site.coords, { draggable: true }).addTo(map);
+                        marker.bindPopup(`<b>${site.name}</b><br>Drag to reposition.`);
+                        marker.on('dragend', function(e) {
+                            const newCoords = e.target.getLatLng();
+                            site.coords = [newCoords.lat, newCoords.lng];
+                            // Redraw circles for this site
+                            activeLayers[missileId].forEach(l => map.removeLayer(l));
+                            delete activeLayers[missileId];
+                            document.getElementById(missileId).checked = false; // Uncheck to allow re-toggling
+                            document.getElementById(missileId).checked = true;
+                            const changeEvent = new Event('change');
+                            document.getElementById(missileId).dispatchEvent(changeEvent);
+                        });
+                        activeLayers[missileId].push(marker);
+                    }
+                });
+            } else {
+                if (activeLayers[missileId]) {
+                    activeLayers[missileId].forEach(layer => map.removeLayer(layer));
+                    delete activeLayers[missileId];
+                }
+            }
+            updateAtRiskPopulation();
+            updateTimeToNCR();
+        }
+
+        function toggleDefensiveSystem(system) {
+            const layerId = `defense_${system.id}`;
+            if (activeLayers[layerId]) {
+                activeLayers[layerId].forEach(l => map.removeLayer(l));
+                delete activeLayers[layerId];
+                return;
+            }
+            activeLayers[layerId] = [];
+            const circle = L.circle(system.coords, {
+                color: 'green',
+                fillColor: 'green',
+                fillOpacity: 0.2,
+                radius: system.range * 1000
+            }).addTo(map);
+            circle.bindPopup(`<b>${system.name}</b><br>Range: ${system.range} km`);
+            activeLayers[layerId].push(circle);
+        }
+
+        // --- UI UPDATE FUNCTIONS ---
+        function showMissileInfo(missile) {
+            infoContent.innerHTML = `
+                <p class="font-bold text-blue-900">${missile.name}</p>
+                <p><strong>Type:</strong> ${missile.type}</p>
+                <p><strong>Speed:</strong> ~${missile.speed ? missile.speed.toLocaleString() : 'N/A'} km/h</p>
+                <p><strong>Range:</strong> ${missile.range.toLocaleString()} km</p>
+                <p><strong>Info:</strong> ${missile.info}</p>
+            `;
+        }
+
+        function showSystemInfo(system) {
+            infoContent.innerHTML = `
+                <p class="font-bold text-blue-900">${system.name}</p>
+                <p><strong>Range:</strong> ${system.range.toLocaleString()} km</p>
+                <p><strong>Info:</strong> ${system.info}</p>
+            `;
+        }
+
+
+        function showLocationInfo(province) {
+            infoContent.innerHTML = `
+                <p class="font-bold text-blue-900">${province.name}</p>
+                <p><strong>Type:</strong> Province</p>
+                <p><strong>Population (2020):</strong> ${province.population.toLocaleString()}</p>
+            `;
+        }
+
+        function updateAtRiskPopulation() {
+            let totalAtRisk = 0;
+            const atRiskProvinces = new Set();
+
+            provinceMarkers.forEach(province => {
+                const provinceLatLng = province.marker.getLatLng();
+                let isAtRisk = false;
+                for (const missileId in activeLayers) {
+                    if (missileId.startsWith('defense_')) continue;
+                    if (isAtRisk) break;
+                    activeLayers[missileId].forEach(layer => {
+                        if (isAtRisk || !(layer instanceof L.Circle)) return;
+                        const circleLatLng = layer.getLatLng();
+                        const distance = circleLatLng.distanceTo(provinceLatLng);
+                        if (distance <= layer.getRadius()) {
+                            isAtRisk = true;
+                            atRiskProvinces.add(province.name);
+                        }
+                    });
+                }
+            });
+            
+            provinceMarkers.forEach(province => {
+                if (atRiskProvinces.has(province.name)) {
+                    totalAtRisk += province.population;
+                }
+            });
+
+            atRiskContent.textContent = totalAtRisk.toLocaleString();
+        }
+
+        function updateTimeToNCR() {
+            const ncrLatLng = L.latLng(ncrCoords);
+            let shortestTime = Infinity;
+            
+            const checkedMissiles = document.querySelectorAll('#missile-list input[type="checkbox"]:checked');
+            
+            checkedMissiles.forEach(checkbox => {
+                const missileId = checkbox.id;
+                let missileInfo = null;
+                let countryData = null;
+
+                for (const countryName in missileData) {
+                    const foundMissile = missileData[countryName].missiles.find(m => m.id === missileId);
+                    if (foundMissile) {
+                        missileInfo = foundMissile;
+                        countryData = missileData[countryName];
+                        break;
+                    }
+                }
+
+                if (missileInfo && missileInfo.speed) {
+                    countryData.launchSites.forEach(site => {
+                        const launchLatLng = L.latLng(site.coords);
+                        const distanceMeters = launchLatLng.distanceTo(ncrLatLng);
+                        const distanceKm = distanceMeters / 1000;
+
+                        if (distanceKm <= missileInfo.range) {
+                            const timeHours = distanceKm / missileInfo.speed;
+                            const timeMinutes = timeHours * 60;
+                            if (timeMinutes < shortestTime) {
+                                shortestTime = timeMinutes;
+                            }
+                        }
+                    });
+                }
+            });
+
+            if (shortestTime === Infinity) {
+                timeToNcrContent.textContent = 'N/A';
+            } else {
+                timeToNcrContent.textContent = `${Math.round(shortestTime)} min`;
+            }
+        }
+
+        function clearAllLayers() {
+            for (const id in activeLayers) {
+                activeLayers[id].forEach(layer => map.removeLayer(layer));
+            }
+            activeLayers = {};
+            document.querySelectorAll('input[type="checkbox"]').forEach(cb => cb.checked = false);
+            infoContent.innerHTML = '<p>Hover over a missile or map marker for details.</p>';
+            updateAtRiskPopulation();
+            updateTimeToNCR();
+        }
+
+        // --- RUN ---
+        populateProvinceMarkers();
+        populateDefenseList();
+        addLegend();
+    </script>
+</body>
+</html>
